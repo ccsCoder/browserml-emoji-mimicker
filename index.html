@@ -2,25 +2,14 @@
 <html>
   <head>
     <title>Emoji Mimicker</title>
-    <style>
-      #video,
-      #canvas {
-        position: absolute;
-      }
-      .container {
-        position: relative;
-        width: 640px;
-        height: 480px;
-      }
-    </style>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="index.js"></script>
   </head>
   <body>
-    <h1 id="emoji">Okay... here we go.</h1>
-    <h2 id="debug"></h2>
+    <h1>Emoji Mimic</h1>
     <div class="container">
-      <video id="video" width="640" height="480" autoplay></video>
-      <canvas id="canvas" width="640" height="480"></canvas>
-      
+      <video id="video" autoplay></video>
+      <div class="emoji" id="emoji"></div>
     </div>
 
     <!-- Load TensorFlow.js -->
@@ -36,58 +25,52 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.2"></script>
 
     <script>
-      // All emojis !
-      const emojis = {
-        neutral: "😐",
-        happy: "😄",
-        sad: "😢",
-        surprised: "😮",
-        angry: "😠",
-      };
-
       function calculateDistance(point1, point2) {
-            return Math.sqrt(
-                Math.pow(point2.x - point1.x, 2) + 
-                Math.pow(point2.y - point1.y, 2)
-            );
-        }
+        return Math.sqrt(
+          Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
+        );
+      }
 
       function classifyExpression(landmarks) {
         // Key points for mouth
-        const upperLipTop = landmarks[13];     // Upper lip top
-            const upperLipBottom = landmarks[14];  // Upper lip bottom
-            const lowerLipTop = landmarks[17];     // Lower lip top
-            const lowerLipBottom = landmarks[15];  // Lower lip bottom
+        const upperLipTop = landmarks[13]; // Upper lip top
+        const upperLipBottom = landmarks[14]; // Upper lip bottom
+        const lowerLipTop = landmarks[17]; // Lower lip top
+        const lowerLipBottom = landmarks[15]; // Lower lip bottom
 
-            // Key points for eyes
-            const leftEyeTop = landmarks[159];     // Left eye top
-            const leftEyeBottom = landmarks[145];  // Left eye bottom
-            const rightEyeTop = landmarks[386];    // Right eye top
-            const rightEyeBottom = landmarks[374]; // Right eye bottom
+        // Key points for eyes
+        const leftEyeTop = landmarks[159]; // Left eye top
+        const leftEyeBottom = landmarks[145]; // Left eye bottom
+        const rightEyeTop = landmarks[386]; // Right eye top
+        const rightEyeBottom = landmarks[374]; // Right eye bottom
 
-            // Calculate mouth and eye openness
-            const mouthHeight = calculateDistance(upperLipTop, lowerLipBottom);
-            const mouthWidth = calculateDistance(landmarks[78], landmarks[308]); // Mouth corners
-            const mouthRatio = mouthHeight / mouthWidth;
+        // Calculate mouth and eye openness
+        const mouthHeight = calculateDistance(upperLipTop, lowerLipBottom);
+        const mouthWidth = calculateDistance(landmarks[78], landmarks[308]); // Mouth corners
+        const mouthRatio = mouthHeight / mouthWidth;
 
-            const leftEyeOpenness = calculateDistance(leftEyeTop, leftEyeBottom);
-            const rightEyeOpenness = calculateDistance(rightEyeTop, rightEyeBottom);
-            const avgEyeOpenness = (leftEyeOpenness + rightEyeOpenness) / 2;
+        const leftEyeOpenness = calculateDistance(leftEyeTop, leftEyeBottom);
+        const rightEyeOpenness = calculateDistance(rightEyeTop, rightEyeBottom);
+        const avgEyeOpenness = (leftEyeOpenness + rightEyeOpenness) / 2;
 
-            // Debug information
-            const debugInfo = {
-                mouthRatio: mouthRatio.toFixed(3),
-                mouthHeight: mouthHeight.toFixed(1),
-                mouthWidth: mouthWidth.toFixed(1),
-                eyeOpenness: avgEyeOpenness.toFixed(1)
-            };
-            
-            // Classification logic with adjusted thresholds
-            if (mouthRatio > 0.5) return "surprised";
-            if (avgEyeOpenness < 10 && mouthRatio < 0.2) return "angry";
-            if (mouthRatio < 0.2) return "sad";
-            if (mouthRatio > 0.3) return "happy";
-            return "neutral";
+        // Debug information
+        const debugInfo = {
+          mouthRatio: mouthRatio.toFixed(3),
+          mouthHeight: mouthHeight.toFixed(1),
+          mouthWidth: mouthWidth.toFixed(1),
+          eyeOpenness: avgEyeOpenness.toFixed(1),
+        };
+
+        // if (leftEyeOpenness < 0.1 && rightEyeOpenness > 0.1) return "wink";
+        // if (rightEyeOpenness < 0.1 && leftEyeOpenness > 0.1) return "wink";
+        if (avgEyeOpenness < 5) return "wink";
+
+        if (mouthRatio > 0.8) return "fullyOpen";
+        if (mouthRatio > 0.6) return "mostlyOpen";
+        if (mouthRatio > 0.4) return "halfOpen";
+        if (mouthRatio > 0.2) return "slightlyOpen";
+
+        return "neutral";
       }
 
       async function setupWebcam() {
@@ -127,13 +110,8 @@
           }
         );
 
-        const canvas = document.getElementById("canvas");
-        const ctx = canvas.getContext("2d");
-
         async function renderPrediction() {
           const predictions = await model.estimateFaces(video);
-
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
 
           if (predictions.length > 0) {
             predictions.forEach((prediction) => {
@@ -142,10 +120,11 @@
               const expression = classifyExpression(keypoints);
               // set the emoji
               document.getElementById("emoji").innerText = emojis[expression];
+              expression === "wink" && createEmojiRain(expression);
             });
           }
           // Disable / Enable
-          // requestAnimationFrame(renderPrediction);
+          requestAnimationFrame(renderPrediction);
         }
 
         renderPrediction();
