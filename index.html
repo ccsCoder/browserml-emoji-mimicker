@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Emoji Mimicker</title>
+    <style>
+      #video,
+      #canvas {
+        position: absolute;
+      }
+      .container {
+        position: relative;
+        width: 640px;
+        height: 480px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="emoji">Okay... here we go.</h1>
+    <h2 id="debug"></h2>
+    <div class="container">
+      <video id="video" width="640" height="480" autoplay></video>
+      <canvas id="canvas" width="640" height="480"></canvas>
+      
+    </div>
+
+    <!-- Load TensorFlow.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.15.0/tf.min.js"></script>
+
+    <!-- Load TFJS backend -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+
+    <!-- Load MediaPipe FaceMesh -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+
+    <!-- Load Face Landmarks Detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.2"></script>
+
+    <script>
+      // All emojis !
+      const emojis = {
+        neutral: "😐",
+        happy: "😄",
+        sad: "😢",
+        surprised: "😮",
+        angry: "😠",
+      };
+
+      function calculateDistance(point1, point2) {
+            return Math.sqrt(
+                Math.pow(point2.x - point1.x, 2) + 
+                Math.pow(point2.y - point1.y, 2)
+            );
+        }
+
+      function classifyExpression(landmarks) {
+        // Key points for mouth
+        const upperLipTop = landmarks[13];     // Upper lip top
+            const upperLipBottom = landmarks[14];  // Upper lip bottom
+            const lowerLipTop = landmarks[17];     // Lower lip top
+            const lowerLipBottom = landmarks[15];  // Lower lip bottom
+
+            // Key points for eyes
+            const leftEyeTop = landmarks[159];     // Left eye top
+            const leftEyeBottom = landmarks[145];  // Left eye bottom
+            const rightEyeTop = landmarks[386];    // Right eye top
+            const rightEyeBottom = landmarks[374]; // Right eye bottom
+
+            // Calculate mouth and eye openness
+            const mouthHeight = calculateDistance(upperLipTop, lowerLipBottom);
+            const mouthWidth = calculateDistance(landmarks[78], landmarks[308]); // Mouth corners
+            const mouthRatio = mouthHeight / mouthWidth;
+
+            const leftEyeOpenness = calculateDistance(leftEyeTop, leftEyeBottom);
+            const rightEyeOpenness = calculateDistance(rightEyeTop, rightEyeBottom);
+            const avgEyeOpenness = (leftEyeOpenness + rightEyeOpenness) / 2;
+
+            // Debug information
+            const debugInfo = {
+                mouthRatio: mouthRatio.toFixed(3),
+                mouthHeight: mouthHeight.toFixed(1),
+                mouthWidth: mouthWidth.toFixed(1),
+                eyeOpenness: avgEyeOpenness.toFixed(1)
+            };
+            
+            // Classification logic with adjusted thresholds
+            if (mouthRatio > 0.5) return "surprised";
+            if (avgEyeOpenness < 10 && mouthRatio < 0.2) return "angry";
+            if (mouthRatio < 0.2) return "sad";
+            if (mouthRatio > 0.3) return "happy";
+            return "neutral";
+      }
+
+      async function setupWebcam() {
+        const video = document.getElementById("video");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: "user",
+            width: 640,
+            height: 480,
+          },
+        });
+        video.srcObject = stream;
+
+        return new Promise((resolve) => {
+          video.onloadedmetadata = () => {
+            video.play();
+            resolve(video);
+          };
+        });
+      }
+
+      async function main() {
+        // First, wait for TF to be ready
+        await tf.ready();
+
+        // Initialize the webcam
+        const video = await setupWebcam();
+
+        // Load the face landmarks detection model
+        const model = await faceLandmarksDetection.createDetector(
+          faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
+          {
+            runtime: "mediapipe",
+            solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh",
+            maxFaces: 1,
+          }
+        );
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        async function renderPrediction() {
+          const predictions = await model.estimateFaces(video);
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          if (predictions.length > 0) {
+            predictions.forEach((prediction) => {
+              // Draw face landmarks
+              const keypoints = prediction.keypoints;
+              const expression = classifyExpression(keypoints);
+              // set the emoji
+              document.getElementById("emoji").innerText = emojis[expression];
+            });
+          }
+          // Disable / Enable
+          // requestAnimationFrame(renderPrediction);
+        }
+
+        renderPrediction();
+      }
+
+      // Wait for all scripts to load before starting
+      window.onload = async () => {
+        try {
+          // Small delay to ensure all scripts are properly initialized
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await main();
+        } catch (error) {
+          console.error("Error initializing:", error);
+        }
+      };
+    </script>
+  </body>
+</html>
